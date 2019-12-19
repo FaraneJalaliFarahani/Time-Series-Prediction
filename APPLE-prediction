@@ -1,0 +1,105 @@
+
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+import torch
+import torch.nn as nn
+from torch.autograd import Variable
+from sklearn.preprocessing import MinMaxScaler
+import matplotlib.pyplot as plt
+
+training_set = pd.read_csv('APPL.csv')
+training_set = training_set.iloc[:,4:5].values
+sc = MinMaxScaler()
+training_set = sc.fit_transform(training_set)# normalize
+
+def sliding_windows(data, seq_length):
+    x = []
+    y = []
+    for i in range(len(data)-seq_length-1):
+        _x = data[i:(i+seq_length)]
+        _y = data[i+seq_length]
+        x.append(_x)
+        y.append(_y)
+
+    return np.array(x),np.array(y)
+seq_length = 5
+x, y = sliding_windows(training_set, seq_length)
+dataX = Variable(torch.Tensor(np.array(x)))
+dataY = Variable(torch.Tensor(np.array(y)))
+
+
+class LSTM(nn.Module):
+
+    def __init__(self, num_classes, input_size, hidden_size, num_layers,bidirectional= True):
+        super(LSTM, self).__init__()
+        
+        self.num_classes = num_classes
+        self.num_layers = num_layers
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.seq_length = seq_length
+        self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size,num_layers=num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, num_classes)
+
+    def forward(self, x):
+        h_0 = Variable(torch.zeros(self.num_layers, x.size(0), self.hidden_size))
+        c_0 = Variable(torch.zeros(self.num_layers, x.size(0), self.hidden_size))
+        out, _ = self.lstm(x, (h_0, c_0)) 
+        out = self.fc(out[:, -1, :])
+        return out
+
+
+class GRU(nn.Module):
+
+    def __init__(self, num_classes, input_size, hidden_size, num_layers,bidirectional=True):
+        super(GRU, self).__init__()
+        
+        self.num_classes = num_classes
+        self.num_layers = num_layers
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.seq_length = seq_length
+        self.gru = nn.GRU(input_size=input_size, hidden_size=hidden_size,num_layers=num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, num_classes)
+
+    def forward(self, x):
+        h_0 = Variable(torch.zeros(self.num_layers, x.size(0), self.hidden_size))
+        out,_= self.gru(x, h_0) 
+        out = self.fc(out[:, -1, :])
+        return out
+
+num_epochs = 30
+learning_rate = 0.001
+input_size = 1
+hidden_size = 100
+num_layers = 3
+num_classes = 1
+
+
+def callModel(network,direction):
+  l=[]
+  e=[]
+  if network == 'Lstm':
+    model = LSTM(num_classes, input_size, hidden_size, num_layers,direction)
+    print(model)
+  if network == 'Gru':
+    model = GRU(num_classes, input_size, hidden_size, num_layers,direction)
+    print(model)
+
+  criterion = torch.nn.MSELoss()    # mean-squared error for regression
+  optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+  for epoch in range(num_epochs):
+      outputs = model(dataX)
+      optimizer.zero_grad()
+      loss = criterion(outputs, dataY)
+      loss.backward()
+      optimizer.step()
+      
+      l.append(loss.item())
+      e.append(epoch)
+  plt.plot(e, l, 'r*')
+  plt.xlabel("epoch")
+  plt.ylabel("Loss")
+
+callModel('Gru',True)
